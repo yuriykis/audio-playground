@@ -28,23 +28,6 @@ func main() {
 	cfg.Capture.Channels = channels
 	cfg.SampleRate = sampleRate
 
-	// Called by the system every time a new buffer arrives from the microphone.
-	onData := func(_, input []byte, frameCount uint32) {
-		samples := make([]int16, frameCount*channels)
-		peak := 0
-		for i := range samples {
-			s := int16(binary.LittleEndian.Uint16(input[i*2:]))
-			samples[i] = s
-			if abs := max(int(s), -int(s)); abs > peak {
-				peak = abs
-			}
-		}
-
-		ms := float64(frameCount) / sampleRate * 1000
-		fmt.Printf("%4d samples (%5.1f ms, %4d bytes)  first: %v  peak: %5d\n",
-			len(samples), ms, len(input), samples[:min(5, len(samples))], peak)
-	}
-
 	device, err := malgo.InitDevice(ctx.Context, cfg, malgo.DeviceCallbacks{Data: onData})
 	if err != nil {
 		log.Fatal(err)
@@ -57,4 +40,21 @@ func main() {
 
 	fmt.Println("Listening to the microphone... Press Enter to stop.")
 	_, _ = fmt.Scanln()
+}
+
+// onData is called by the system every time a new buffer arrives from the microphone.
+func onData(_, input []byte, frameCount uint32) {
+	samples := make([]int16, frameCount*channels)
+	peak := 0
+	for i := range samples {
+		s := int16(binary.LittleEndian.Uint16(input[i*2:]))
+		samples[i] = s
+		if abs := max(int(s), -int(s)); abs > peak {
+			peak = abs
+		}
+	}
+
+	ms := float64(frameCount) / sampleRate * 1000
+	fmt.Printf("%4d samples (%5.1f ms, %4d bytes)  first: %v  peak: %5d\n",
+		len(samples), ms, len(input), samples[:min(5, len(samples))], peak)
 }
