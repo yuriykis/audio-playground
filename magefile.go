@@ -23,8 +23,8 @@ func Build() error {
 	return sh.RunV("go", "build", "-tags", buildTags, "-o", serverBin, "./cmd/server")
 }
 
-// Run builds everything and starts the client.
-func Run() error {
+// Client builds everything and starts the client.
+func Client() error {
 	mg.Deps(Build)
 	return sh.RunV("./" + clientBin)
 }
