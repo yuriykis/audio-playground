@@ -8,24 +8,24 @@ import (
 )
 
 const (
-	binPath = "bin/audio-playground"
+	clientBin = "bin/client"
 
 	// nolibopusfile skips the Ogg/Opus file reader in hraban/opus, so only libopus is needed.
 	buildTags = "nolibopusfile"
 )
 
-// Build compiles the app into bin/.
+// Build compiles the client into bin/.
 func Build() error {
-	return sh.RunV("go", "build", "-tags", buildTags, "-o", binPath, ".")
+	return sh.RunV("go", "build", "-tags", buildTags, "-o", clientBin, "./cmd/client")
 }
 
-// Run builds the app and starts it.
+// Run builds the client and starts it.
 func Run() error {
 	mg.Deps(Build)
-	return sh.RunV("./" + binPath)
+	return sh.RunV("./" + clientBin)
 }
 
-// Lint runs golangci-lint on the app and the magefile.
+// Lint runs golangci-lint on the whole module and the magefile.
 func Lint() error {
 	return sh.RunV("golangci-lint", "run", "--build-tags", "mage,"+buildTags, "./...")
 }
