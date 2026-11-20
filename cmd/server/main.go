@@ -1,43 +1,54 @@
+// Command server accepts audio clients over WebSocket and logs every Opus
+// packet it receives.
 package main
 
 import (
-	"errors"
-	"log"
+	"flag"
+	"log/slog"
 	"net/http"
+	"os"
 
 	"github.com/coder/websocket"
 )
 
-const addr = ":9000"
+const defaultAddr = ":9000"
 
 func main() {
-	http.HandleFunc("/audio", handleAudio)
+	addr := flag.String("addr", defaultAddr, "address to listen on")
+	flag.Parse()
 
-	log.Printf("Listening on %s (WebSocket endpoint: ws://localhost%s/audio)", addr, addr)
-	log.Fatal(http.ListenAndServe(addr, nil))
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /audio", handleAudio)
+
+	slog.Info("listening", "addr", *addr, "endpoint", "/audio")
+	if err := http.ListenAndServe(*addr, mux); err != nil {
+		slog.Error("server stopped", "err", err)
+		os.Exit(1)
+	}
 }
 
-// handleAudio accepts one client connection and logs every Opus packet it receives.
+// handleAudio serves one client connection and logs every packet it receives.
 func handleAudio(w http.ResponseWriter, r *http.Request) {
 	conn, err := websocket.Accept(w, r, nil)
 	if err != nil {
-		log.Printf("accept: %v", err)
+		slog.Warn("accept websocket", "err", err)
 		return
 	}
 	defer func() { _ = conn.CloseNow() }()
 
-	log.Printf("client connected: %s", r.RemoteAddr)
+	log := slog.With("client", r.RemoteAddr)
+	log.Info("client connected")
 
 	for {
 		_, packet, err := conn.Read(r.Context())
-		if err != nil {
-			if websocket.CloseStatus(err) == websocket.StatusNormalClosure || errors.Is(err, r.Context().Err()) {
-				log.Printf("client disconnected: %s", r.RemoteAddr)
-			} else {
-				log.Printf("read: %v", err)
-			}
+		if websocket.CloseStatus(err) == websocket.StatusNormalClosure {
+			log.Info("client disconnected")
 			return
 		}
-		log.Printf("received %3d bytes", len(packet))
+		if err != nil {
+			log.Warn("read packet", "err", err)
+			return
+		}
+		log.Info("received packet", "bytes", len(packet))
 	}
 }
