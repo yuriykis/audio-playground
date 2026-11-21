@@ -1,5 +1,5 @@
-// Command server accepts audio clients over WebSocket and logs every Opus
-// packet it receives.
+// Command server accepts audio clients over WebSocket and decodes every Opus
+// packet it receives back to PCM.
 package main
 
 import (
@@ -8,10 +8,18 @@ import (
 	"net/http"
 	"os"
 
+	"audio-playground/internal/audio"
+
 	"github.com/coder/websocket"
+	"gopkg.in/hraban/opus.v2"
 )
 
-const defaultAddr = ":9000"
+const (
+	defaultAddr = ":9000"
+
+	// maxDecodedSamples fits the longest Opus packet, 120 ms. Our client sends 20 ms.
+	maxDecodedSamples = audio.SampleRate * 120 / 1000 * audio.Channels
+)
 
 func main() {
 	addr := flag.String("addr", defaultAddr, "address to listen on")
@@ -27,7 +35,7 @@ func main() {
 	}
 }
 
-// handleAudio serves one client connection and logs every packet it receives.
+// handleAudio serves one client connection and decodes every packet back to PCM.
 func handleAudio(w http.ResponseWriter, r *http.Request) {
 	conn, err := websocket.Accept(w, r, nil)
 	if err != nil {
@@ -39,6 +47,13 @@ func handleAudio(w http.ResponseWriter, r *http.Request) {
 	log := slog.With("client", r.RemoteAddr)
 	log.Info("client connected")
 
+	dec, err := opus.NewDecoder(audio.SampleRate, audio.Channels)
+	if err != nil {
+		log.Error("create decoder", "err", err)
+		return
+	}
+
+	pcm := make([]int16, maxDecodedSamples)
 	for {
 		_, packet, err := conn.Read(r.Context())
 		if websocket.CloseStatus(err) == websocket.StatusNormalClosure {
@@ -49,6 +64,13 @@ func handleAudio(w http.ResponseWriter, r *http.Request) {
 			log.Warn("read packet", "err", err)
 			return
 		}
-		log.Info("received packet", "bytes", len(packet))
+
+		// Decode returns the number of samples per channel.
+		n, err := dec.Decode(packet, pcm)
+		if err != nil {
+			log.Warn("decode packet", "err", err)
+			continue
+		}
+		log.Info("received packet", "bytes", len(packet), "samples", n)
 	}
 }
